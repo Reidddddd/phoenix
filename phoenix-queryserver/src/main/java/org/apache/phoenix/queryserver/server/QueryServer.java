@@ -58,9 +58,12 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.net.InetAddress;
+import java.net.URL;
 import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -188,6 +191,7 @@ public final class QueryServer extends Configured implements Tool, Runnable {
     logProcessInfo(getConf());
     final boolean loadBalancerEnabled = getConf().getBoolean(QueryServices.PHOENIX_QUERY_SERVER_LOADBALANCER_ENABLED,
             QueryServicesOptions.DEFAULT_PHOENIX_QUERY_SERVER_LOADBALANCER_ENABLED);
+    LOG.info("loadBalancerEnabled: " + loadBalancerEnabled);
     try {
       final boolean isKerberos = "kerberos".equalsIgnoreCase(getConf().get(
           QueryServices.QUERY_SERVER_HBASE_SECURITY_CONF_ATTRIB));
@@ -202,14 +206,25 @@ public final class QueryServer extends Configured implements Tool, Runnable {
         hostname = Strings.domainNamePointerToHostName(DNS.getDefaultHost(
             getConf().get(QueryServices.QUERY_SERVER_DNS_INTERFACE_ATTRIB, "default"),
             getConf().get(QueryServices.QUERY_SERVER_DNS_NAMESERVER_ATTRIB, "default")));
+        LOG.info("Login to " + hostname + " using " +
+          getConf().get(QueryServices.QUERY_SERVER_KEYTAB_FILENAME_ATTRIB) + " and principal " +
+          getConf().get(QueryServices.QUERY_SERVER_KERBEROS_PRINCIPAL_ATTRIB) + ".");
         if (LOG.isDebugEnabled()) {
           LOG.debug("Login to " + hostname + " using " + getConf().get(
               QueryServices.QUERY_SERVER_KEYTAB_FILENAME_ATTRIB)
               + " and principal " + getConf().get(
                   QueryServices.QUERY_SERVER_KERBEROS_PRINCIPAL_ATTRIB) + ".");
         }
-        SecurityUtil.login(getConf(), QueryServices.QUERY_SERVER_KEYTAB_FILENAME_ATTRIB,
-            QueryServices.QUERY_SERVER_KERBEROS_PRINCIPAL_ATTRIB, hostname);
+        Configuration conf = getConf();
+        conf.set("hadoop.security.authentication", "kerberos");
+        LOG.info(conf.get("hadoop.security.authentication"));
+        UserGroupInformation.setConfiguration(conf);
+        UserGroupInformation.loginUserFromKeytab(
+          getConf().get(QueryServices.QUERY_SERVER_KERBEROS_PRINCIPAL_ATTRIB),
+          getConf().get(QueryServices.QUERY_SERVER_KEYTAB_FILENAME_ATTRIB));
+
+        //SecurityUtil.login(getConf(), QueryServices.QUERY_SERVER_KEYTAB_FILENAME_ATTRIB,
+        //    QueryServices.QUERY_SERVER_KERBEROS_PRINCIPAL_ATTRIB, hostname);
         LOG.info("Login successful.");
       } else {
         hostname = InetAddress.getLocalHost().getHostName();
@@ -241,7 +256,10 @@ public final class QueryServer extends Configured implements Tool, Runnable {
       server = builder.build();
       server.start();
       if (loadBalancerEnabled) {
+        LOG.info("Load Balance enable!");
         registerToServiceProvider(hostname);
+      } else {
+        LOG.info("Normal mode");
       }
       runningLatch.countDown();
       server.join();
@@ -314,10 +332,15 @@ public final class QueryServer extends Configured implements Tool, Runnable {
       Preconditions.checkNotNull(loadBalanceConfiguration);
       this.registry = getRegistry();
       Preconditions.checkNotNull(registry);
+      LOG.info("getParentPath: " + loadBalanceConfiguration.getParentPath());
+      LOG.info("getQueryServerBasePath: " + loadBalanceConfiguration.getQueryServerBasePath());
+      LOG.info("getServiceName: " + loadBalanceConfiguration.getServiceName());
+      LOG.info("getZkConnectString: " + loadBalanceConfiguration.getZkConnectString());
+      LOG.info("getAcls: " + loadBalanceConfiguration.getAcls());
       String zkConnectString = loadBalanceConfiguration.getZkConnectString();
       this.registry.registerServer(loadBalanceConfiguration, getPort(), zkConnectString, hostName);
     } catch(Throwable ex){
-      LOG.debug("Caught an error trying to register with the load balancer", ex);
+      LOG.error("Caught an error trying to register with the load balancer", ex);
       success = false;
     } finally {
       return success;
@@ -327,12 +350,26 @@ public final class QueryServer extends Configured implements Tool, Runnable {
 
   public LoadBalanceZookeeperConf getLoadBalanceConfiguration()  {
     ServiceLoader<LoadBalanceZookeeperConf> serviceLocator= ServiceLoader.load(LoadBalanceZookeeperConf.class);
+    String fullName = "META-INF/services/" + LoadBalanceZookeeperConf.class.getName();
+    LOG.info("Full name: " + fullName);
+    ClassLoader cl = Thread.currentThread().getContextClassLoader();
+    try {
+      Enumeration<URL> configs = cl.getResources(fullName);
+      while (configs.hasMoreElements()) {
+        LOG.info("hasMoreElements");
+        LOG.info(configs.nextElement());
+      }
+    } catch (IOException ioe) {
+      LOG.error(ioe);
+    }
     LoadBalanceZookeeperConf zookeeperConfig = null;
     try {
-      if (serviceLocator.iterator().hasNext())
-        zookeeperConfig = serviceLocator.iterator().next();
+      Iterator<LoadBalanceZookeeperConf> it = serviceLocator.iterator();
+      if (it.hasNext()) {
+        zookeeperConfig = it.next();
+      }
     } catch(ServiceConfigurationError ex) {
-      LOG.debug("Unable to locate the service provider for load balancer configuration", ex);
+      LOG.error("Unable to locate the service provider for load balancer configuration", ex);
     } finally {
       return zookeeperConfig;
     }
@@ -340,13 +377,31 @@ public final class QueryServer extends Configured implements Tool, Runnable {
 
   public Registry getRegistry()  {
     ServiceLoader<Registry> serviceLocator= ServiceLoader.load(Registry.class);
+    String fullName = "META-INF/services/" + Registry.class.getName();
+    LOG.info("Full name: " + fullName);
+    ClassLoader cl = Thread.currentThread().getContextClassLoader();
+    try {
+      Enumeration<URL> configs = cl.getResources(fullName);
+      while (configs.hasMoreElements()) {
+        LOG.info("hasMoreElements");
+        LOG.info(configs.nextElement());
+      }
+    } catch (IOException ioe) {
+      LOG.error(ioe);
+    }
     Registry registry = null;
     try {
-      if (serviceLocator.iterator().hasNext())
-        registry = serviceLocator.iterator().next();
+      Iterator<Registry> it = serviceLocator.iterator();
+      if (it.hasNext()) {
+        registry = it.next();
+        LOG.info("Registry name: " + registry.getClass().getName());
+      } else {
+        LOG.warn("NO!!!, Can't find one");
+      }
     } catch(ServiceConfigurationError ex) {
-      LOG.debug("Unable to locate the zookeeper registry for the load balancer", ex);
+      LOG.error("Unable to locate the zookeeper registry for the load balancer", ex);
     } finally {
+      LOG.info("registry is null: " + (registry == null));
       return registry;
     }
   }

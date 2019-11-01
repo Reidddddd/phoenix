@@ -21,6 +21,8 @@ import java.security.PrivilegedExceptionAction;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sqlline.SqlLine;
 
 /**
@@ -32,6 +34,8 @@ public class SqllineWrapper {
   public static final String QUERY_SERVER_SPNEGO_AUTH_DISABLED_ATTRIB = "phoenix.queryserver.spnego.auth.disabled";
   public static final boolean DEFAULT_QUERY_SERVER_SPNEGO_AUTH_DISABLED = false;
 
+  private static final Logger logger = LoggerFactory.getLogger(SqllineWrapper.class);
+
   static UserGroupInformation loginIfNecessary(Configuration conf) {
     // Try to avoid HBase dependency too. Sadly, we have to bring in all of hadoop-common for this..
     if ("kerberos".equalsIgnoreCase(conf.get(HBASE_AUTHENTICATION_ATTR))) {
@@ -40,7 +44,13 @@ public class SqllineWrapper {
       String principal = System.getProperty("sun.security.krb5.principal", System.getProperty("user.name"));
       try {
         // We got hadoop-auth via hadoop-common, so might as well use it.
-        return UserGroupInformation.getUGIFromTicketCache(null, principal);
+        logger.info(conf.get("hadoop.security.authentication"));
+        conf.set("hadoop.security.authentication", "kerberos");
+        UserGroupInformation.setConfiguration(conf);
+        UserGroupInformation.getUGIFromTicketCache(null, principal);
+        UserGroupInformation user = UserGroupInformation.getLoginUser();
+        logger.info(user.toString());
+        return user;
       } catch (Exception e) {
         throw new RuntimeException("Kerberos login failed using ticket cache. Did you kinit?", e);
       }

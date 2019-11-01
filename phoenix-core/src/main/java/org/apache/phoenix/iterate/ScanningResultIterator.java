@@ -38,6 +38,7 @@ import java.util.Map;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.metrics.ScanMetrics;
 import org.apache.phoenix.monitoring.CombinableMetric;
 import org.apache.phoenix.monitoring.ScanMetricsHolder;
 import org.apache.phoenix.schema.tuple.ResultTuple;
@@ -89,8 +90,12 @@ public class ScanningResultIterator implements ResultIterator {
     private void getScanMetrics() {
 
         if (!scanMetricsUpdated && scanMetricsEnabled) {
-            Map<String, Long> scanMetricsMap = scan.getScanMetrics().getMetricsMap();
-            if(scanMetricsMap == null) {
+            ScanMetrics scanMetrics = scan.getScanMetrics();
+            if (scanMetrics == null) {
+                return;
+            }
+            Map<String, Long> scanMetricsMap = scanMetrics.getMetricsMap();
+            if (scanMetricsMap == null) {
                 return;
             }
             scanMetricsHolder.setScanMetricMap(scanMetricsMap);

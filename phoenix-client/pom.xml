@@ -129,7 +129,16 @@
                 </includes>
                 <excludes>
                   <exclude>org.apache.phoenix:phoenix-client</exclude>
+                  <exclude>org.apache.hadoop</exclude>
                   <exclude>xom:xom</exclude>
+                  <exclude>org.mortbay.jetty:servlet-api-2.5:*</exclude>
+                  <exclude>org.mortbay.jetty:servlet-api:*</exclude>
+                  <exclude>javax.servlet:servlet-api:*</exclude>
+                  <exclude>org.mortbay.jetty:jsp-2.1:*</exclude>
+                  <exclude>org.mortbay.jetty:jsp-api-2.1:*</exclude>
+                  <exclude>javax.servlet.jsp:jsp-api:*</exclude>
+                  <exclude>com.sun.jersey:*</exclude>
+		  <exclude>org.apache.curator:*</exclude>
                 </excludes>
               </artifactSet>
               <filters>

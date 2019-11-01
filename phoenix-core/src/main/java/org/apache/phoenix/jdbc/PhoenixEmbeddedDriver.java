@@ -379,10 +379,15 @@ public abstract class PhoenixEmbeddedDriver implements Driver, SQLCloseable {
                                 // Double check the current user, might have changed since we checked last. Don't want
                                 // to re-login if it's the same user.
                                 currentUser = UserGroupInformation.getCurrentUser();
+                                logger.info("Current user: " + currentUser);
+                                logger.info("Principal: " + principal);
+                                logger.info("Keytab: " + keytab);
                                 if (!currentUser.hasKerberosCredentials() || !isSameName(currentUser.getUserName(), principal)) {
                                     final Configuration config = getConfiguration(props, info, principal, keytab);
                                     logger.info("Trying to connect to a secure cluster as {} with keytab {}", config.get(QueryServices.HBASE_CLIENT_PRINCIPAL),
                                             config.get(QueryServices.HBASE_CLIENT_KEYTAB));
+                                    logger.info("Hadoop Auth: " + config.get("hadoop.security.authentication"));
+                                    logger.info("HBase Auth: " + config.get("hbase.security.authentication"));
                                     UserGroupInformation.setConfiguration(config);
                                     User.login(config, QueryServices.HBASE_CLIENT_KEYTAB, QueryServices.HBASE_CLIENT_PRINCIPAL, null);
                                     logger.info("Successful login to secure cluster");
